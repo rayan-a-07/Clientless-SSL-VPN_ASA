@@ -1,0 +1,122 @@
+en
+conf t
+hostname asa
+
+!!------------------addresses---------------------
+int g0/0
+nameif outside
+security-level 0
+ip add 20.1.1.1 255.255.255.0
+no sh
+
+int g0/1
+nameif inside
+security-level 100
+ip add 10.1.10.1 255.255.255.0
+no sh
+
+int g0/2
+nameif dmz
+security-level 50
+ip add 192.168.100.1 255.255.255.0
+no sh
+
+
+!!------------------enable icmp traffic---------------------
+policy-map global_policy
+class inspection_default
+inspect icmp
+
+fixup protocol icmp
+
+
+!!------------------routing-----------------------
+route inside 1.1.1.0 255.255.255.0 10.1.10.2 
+route inside 2.2.2.0 255.255.255.0 10.1.10.2
+
+
+!!------------------acl to permit protocols--------------------------
+!!icmp from outside to other networks
+access-list traffic_out extended permit icmp any any
+
+
+!!domain from outside to dmz server
+access-list traffic_out extended permit udp any host 192.168.100.2 eq domain
+
+
+!!http from outside to web servers
+access-list traffic_out extended permit tcp any host 1.1.1.2 eq 80
+access-list traffic_out extended permit tcp any host 2.2.2.2 eq 80
+
+
+!!icmp from dmz to other networks
+access-list traffic_dmz extended permit icmp any any
+
+access-group traffic_out in interface outside
+access-group traffic_dmz in interface dmz
+
+
+
+!!-----------!!--------  webvpn  -------!!--------------!!-----------
+
+!!setup dns attributes
+dns domain-lookup dmz
+dns name-server 192.168.100.2
+domain-name isi.com
+
+
+!!create a self signed certificate
+crypto key generate rsa label groupeisi modulus 2048
+
+crypto ca trustpoint TRUST-ISI
+enrollment self
+keypair groupeisi
+subject-name Cn=asa,O="isi.com"
+
+crypto ca enroll TRUST-ISI
+
+
+!!configure acl to allow web servers url
+access-list webacl webtype permit url http://srv1.isi.com
+access-list webacl webtype permit url http://srv2.isi.com
+access-list webacl webtype permit url http://1.1.1.2
+access-list webacl webtype permit url http://2.2.2.2
+
+
+!!create group policy for webvpn connection
+group-policy GP internal
+group-policy GP attributes
+banner value WELCOME TO ISI
+vpn-idle-timeout 1440
+vpn-session-timeout 1440
+vpn-tunnel-protocol ssl-clientless
+webvpn
+filter value webacl
+
+
+!!configure the connection profile
+tunnel-group TG type remote-access
+tunnel-group TG general-attributes
+default-group-policy GP
+password-management password-expire-in-days 60
+tunnel-group TG webvpn-attributes
+group-alias ISI enable
+
+
+!!enable webvpn on outside interface
+webvpn
+enable outside
+tunnel-group-list enable
+
+
+!!choose the certificate that will be used to serve WebVPN connections
+ssl trust-point TRUST-ISI outside
+
+
+!!create user who will access webpvn
+username admin password admin privilege 15
+
+username admin attribute
+vpn-group-policy GP
+service-type remote-access
+
