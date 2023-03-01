@@ -1,0 +1,28 @@
+en
+conf t
+
+!!addresses
+int g0/0
+ip add 10.1.10.2 255.255.255.0
+no sh
+int g1/0
+ip add 1.1.1.1 255.255.255.0
+no sh
+int g2/0
+ip add 2.2.2.1 255.255.255.0
+no sh
+
+
+!!eigrp routing
+router eigrp 1
+redistribute static
+no auto-summary
+network 1.1.1.0
+network 2.2.2.0
+network 10.1.10.0
+
+
+!!
+
+ip route 20.1.1.0 255.255.255.0 10.1.10.1
+ip route 192.168.100.0 255.255.255.0 10.1.10.1
